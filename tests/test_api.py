@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage
 
 import app.main as main
 from app.booking.db import make_engine
+from app.config import settings
 
 CREDS = {"username": "User1", "password": "TechnicalChallengePromtior"}
 
@@ -14,6 +15,7 @@ CREDS = {"username": "User1", "password": "TechnicalChallengePromtior"}
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "engine", make_engine(f"sqlite:///{tmp_path}/api.db"))
+    monkeypatch.setattr(settings, "openai_api_key", "test-key")  # the agent is mocked anyway
     with TestClient(main.app) as client:
         yield client
 
@@ -76,6 +78,15 @@ class TestChat:
         assert res.json() == {"reply": "fake reply"}
         assert fake_agent["username"] == "User1"
         assert fake_agent["message"] == "hello"
+
+    def test_missing_api_key_yields_clear_503(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "openai_api_key", "")
+        token = login(client)
+        res = client.post(
+            "/chat", json={"message": "hi"}, headers={"Authorization": f"Bearer {token}"}
+        )
+        assert res.status_code == 503
+        assert "OPENAI_API_KEY" in res.json()["detail"]
 
     def test_each_login_gets_its_own_thread(self, client, fake_agent):
         headers1 = {"Authorization": f"Bearer {login(client)}"}

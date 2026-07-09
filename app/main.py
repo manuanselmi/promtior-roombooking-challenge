@@ -36,6 +36,8 @@ engine = make_engine(settings.database_url)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    if not settings.openai_api_key:
+        logger.warning("OPENAI_API_KEY is not set — /chat will return 503 until it is configured")
     init_db(engine, users={u: hash_password(SEED_PASSWORD) for u in SEED_USERS})
     yield
 
@@ -97,8 +99,12 @@ def chat(
     session: Session = Depends(get_session),
 ) -> ChatResponse:
     user, session_id = auth
-    agent = build_agent(session, user)
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=503, detail="Server misconfigured: OPENAI_API_KEY is not set"
+        )
     try:
+        agent = build_agent(session, user)
         result = agent.invoke(
             {"messages": [HumanMessage(body.message)]},
             config={"configurable": {"thread_id": session_id}},
