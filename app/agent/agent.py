@@ -54,6 +54,8 @@ Behaviour:
   helps); cancel only when the target is unambiguous.
 - If the system rejects an action, relay the reason and offer an alternative
   (another room, another time).
+- When suggesting alternative rooms, only suggest rooms whose capacity fits
+  the requested number of attendees.
 - Reply in the user's language (Spanish or English). Be concise and friendly.
 """
 
