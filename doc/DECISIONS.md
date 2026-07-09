@@ -186,3 +186,22 @@ ninguna regla de negocio ni dato sensible depende de él.
 6. **Techo de iteraciones:** `ModelCallLimitMiddleware` con máx. 10 llamadas al modelo por
    mensaje de usuario — corta loops descontrolados (y su costo).
 7. **`temperature=0`:** tool-calling estructurado, no creatividad.
+
+---
+
+## D12 — API de chat: `POST /chat` síncrono, sesión de chat = `jti` del JWT
+
+**Decisiones concretas:**
+
+1. **`thread_id` = claim `jti` del JWT.** Cada login genera un session-id aleatorio que
+   LangGraph usa como clave de la conversación → login nuevo = conversación nueva, sin
+   estado extra en el servidor (el JWT ya viaja en cada request). Coherente con la
+   memoria volátil de D11.
+2. **Respuesta bloqueante, sin streaming.** Con `gpt-4o-mini` y respuestas cortas, la
+   latencia percibida no justifica SSE/WebSockets en el MVP. La UI muestra un indicador
+   de "escribiendo". Streaming queda listado como mejora futura.
+3. **Token JWT solo en memoria del navegador** (variable JS, no `localStorage`): un
+   refresh implica re-login. Menos superficie ante XSS y consistente con que la memoria
+   de conversación del servidor también es volátil.
+4. **Errores del agente → HTTP 502 genérico.** Si OpenAI falla, el detalle queda en el
+   log del servidor; el cliente recibe un mensaje neutro (no se filtran internals).

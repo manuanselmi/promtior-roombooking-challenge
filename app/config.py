@@ -8,7 +8,8 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"  # cheap default; override via env (D2)
-    jwt_secret: str = "dev-secret-change-me"
+    # Dev-only default (>=32 bytes per RFC 7518 for HS256); override in production.
+    jwt_secret: str = "dev-only-secret-change-me-in-production!"
     jwt_ttl_minutes: int = 8 * 60
     database_url: str = "sqlite:///data/roombooking.db"
 
