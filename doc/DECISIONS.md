@@ -159,3 +159,30 @@ Se descartan pip/requirements.txt (sin lock real) y Poetry (más pesado, sin ven
 | Horario de oficina | Sin restricción (24/7) | El PDF no lo pide; no inventar reglas = menos edge cases. Extensión futura. |
 | Timezone | America/Montevideo, única | Cubo Itaú está en Montevideo; multi-TZ fuera de alcance. |
 | Idioma del bot | Responde en el idioma del usuario (ES/EN) | El LLM lo maneja sin lógica extra. |
+
+---
+
+## D11 — Guardrails del agente: limitar al LLM en todo lo posible
+
+**Principio:** el agente propone, el código dispone. El LLM solo elige qué tool llamar;
+ninguna regla de negocio ni dato sensible depende de él.
+
+**Decisiones concretas:**
+
+1. **Identidad inyectada, no parametrizada.** Las tools se construyen por request con
+   closures sobre el usuario autenticado (del JWT). `user_id` no es parámetro de ninguna
+   tool → el LLM no puede reservar ni cancelar en nombre de otro, diga lo que diga el chat.
+2. **Errores como datos, no excepciones.** Las violaciones de reglas vuelven como strings
+   (`BOOKING REJECTED: ...`); el agente solo puede relatarlas y ofrecer alternativas.
+3. **Fecha/hora actual inyectada en el system prompt** por request — sin eso el LLM no
+   puede resolver "mañana a las 10" (su reloj interno no existe).
+4. **Memoria por sesión de login:** checkpointer `InMemorySaver` de LangGraph, un
+   `thread_id` por sesión. Volátil a propósito: un restart desloguea a todos igualmente.
+5. **Ventana de contexto acotada:** `SummarizationMiddleware` (built-in de LangChain 1.x)
+   comprime turnos viejos al superar ~3000 tokens. Motivo principal: techo de costo en un
+   deploy público con crédito propio (cada turno re-envía el historial completo), no el
+   límite de 128k. Se eligió sobre trimming custom (la lib ya lo resuelve sin partir pares
+   tool-call/tool-result) y sobre "no hacer nada" (costo sin techo).
+6. **Techo de iteraciones:** `ModelCallLimitMiddleware` con máx. 10 llamadas al modelo por
+   mensaje de usuario — corta loops descontrolados (y su costo).
+7. **`temperature=0`:** tool-calling estructurado, no creatividad.
