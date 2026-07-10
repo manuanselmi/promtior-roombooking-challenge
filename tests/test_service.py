@@ -1,10 +1,15 @@
 """Business-rule tests for app.booking.service — no LLM involved."""
 
+import threading
 from datetime import datetime
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.booking import service
+from app.booking.db import init_db, make_engine
+from app.booking.models import Booking, User
 from app.booking.service import BookingError
 
 
@@ -193,3 +198,44 @@ class TestListUserBookings:
         result = service.list_user_bookings(session, user1, now=t(0, 0, day=1))
         assert [b.start for b in result] == [t(10), t(14)]
         assert all(b.user_id == user1.id for b in result)
+
+
+class TestDoubleBookingRace:
+    """FastAPI serves sync endpoints from a threadpool, so create_booking must
+    stay correct under real thread concurrency (the check-then-insert race)."""
+
+    def test_concurrent_identical_bookings_only_one_wins(self, tmp_path):
+        engine = make_engine(f"sqlite:///{tmp_path}/race.db")
+        init_db(engine, users={"User1": "irrelevant-hash"})
+
+        n_threads = 10
+        barrier = threading.Barrier(n_threads)
+        outcomes: list[str] = []
+
+        def attempt() -> None:
+            with Session(engine) as s:
+                user = s.scalar(select(User).where(User.username == "User1"))
+                barrier.wait()  # maximize contention: everyone books at once
+                try:
+                    service.create_booking(
+                        s,
+                        user=user,
+                        room_id="B",
+                        start=t(10),
+                        end=t(11),
+                        title="Race",
+                        attendees=2,
+                    )
+                    outcomes.append("created")
+                except BookingError:
+                    outcomes.append("rejected")
+
+        threads = [threading.Thread(target=attempt) for _ in range(n_threads)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+
+        assert outcomes.count("created") == 1
+        with Session(engine) as s:
+            assert len(list(s.scalars(select(Booking)))) == 1

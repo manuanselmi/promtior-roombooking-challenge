@@ -11,6 +11,7 @@ boundaries, which makes non-contiguous slot combinations unrepresentable.
 All datetimes are naive local time (America/Montevideo).
 """
 
+import threading
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -20,6 +21,13 @@ from .models import Booking, Room, User
 
 SLOT_MINUTES = 30
 MAX_DURATION = timedelta(hours=3)
+
+# FastAPI runs sync endpoints in a threadpool, so two requests can interleave
+# between the overlap check and the insert. The app deploys as a single process
+# (one container, D5), so a process-wide lock closes that window; a multi-process
+# deployment would need a database-level guarantee instead (e.g. a Postgres
+# exclusion constraint on (room_id, tsrange(start, end))).
+_BOOKING_WRITE_LOCK = threading.Lock()
 
 
 class BookingError(Exception):
@@ -87,21 +95,22 @@ def create_booking(
     if start < (now or datetime.now()):
         raise BookingError("Bookings cannot start in the past.")
 
-    conflicts = _overlapping(session, room.id, start, end)
-    if conflicts:
-        taken = ", ".join(f"{b.start:%Y-%m-%d %H:%M}–{b.end:%H:%M}" for b in conflicts)
-        raise BookingError(f"Room {room.id} is already booked in that range ({taken}).")
+    with _BOOKING_WRITE_LOCK:
+        conflicts = _overlapping(session, room.id, start, end)
+        if conflicts:
+            taken = ", ".join(f"{b.start:%Y-%m-%d %H:%M}–{b.end:%H:%M}" for b in conflicts)
+            raise BookingError(f"Room {room.id} is already booked in that range ({taken}).")
 
-    booking = Booking(
-        room_id=room.id,
-        user_id=user.id,
-        title=title.strip(),
-        attendees=attendees,
-        start=start,
-        end=end,
-    )
-    session.add(booking)
-    session.commit()
+        booking = Booking(
+            room_id=room.id,
+            user_id=user.id,
+            title=title.strip(),
+            attendees=attendees,
+            start=start,
+            end=end,
+        )
+        session.add(booking)
+        session.commit()
     return booking
 
 

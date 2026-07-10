@@ -205,3 +205,28 @@ ninguna regla de negocio ni dato sensible depende de él.
    de conversación del servidor también es volátil.
 4. **Errores del agente → HTTP 502 genérico.** Si OpenAI falla, el detalle queda en el
    log del servidor; el cliente recibe un mensaje neutro (no se filtran internals).
+
+---
+
+## D13 — Carrera de doble reserva: cerrada con lock de proceso
+
+**Problema:** FastAPI atiende endpoints sync desde un threadpool, así que dos requests
+simultáneos podían intercalarse entre el chequeo de solapamiento y el INSERT
+(check-then-insert no atómico) y crear dos reservas solapadas sin que ningún request
+"viera" el conflicto.
+
+**Decisión:** un `threading.Lock` a nivel de proceso alrededor de la sección
+chequeo-de-conflictos + insert en `service.create_booking`. Verificado con un test de
+concurrencia real: 10 threads sincronizados con una barrera intentan la misma reserva y
+exactamente uno gana.
+
+**Por qué alcanza:** el deploy es un único proceso (un contenedor, D5) — no existe
+concurrencia fuera de ese proceso, por lo que el lock cubre el 100% de los casos reales.
+
+**Límite conocido:** con múltiples procesos/réplicas el lock dejaría de alcanzar; el
+camino correcto ahí es una garantía a nivel de base de datos (exclusion constraint de
+Postgres sobre `(room_id, tsrange(start, end))`), que rechaza el segundo insert aunque
+la aplicación tenga la carrera.
+
+**Alternativas descartadas:** `BEGIN IMMEDIATE` (acopla el service al dialecto SQLite);
+dejarlo documentado sin cerrar (defendible, pero cerrarlo costó tres líneas y un test).
