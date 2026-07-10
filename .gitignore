@@ -21,3 +21,6 @@ Thumbs.db
 
 # Challenge statement (Promtior's material, not ours to publish)
 *.pdf
+
+# Personal study material, not part of the deliverable
+notes/
