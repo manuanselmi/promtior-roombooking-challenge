@@ -1,0 +1,26 @@
+# Nada de esto entra al build context ni a la imagen.
+
+# Entorno local y caches (se reconstruyen dentro de la imagen)
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Secretos y datos locales — NO deben viajar a la imagen
+.env
+data/
+*.db
+
+# Material que no es parte del runtime
+notes/
+tests/
+doc/
+*.md
+*.pdf
+
+# Git / OS / editores
+.git/
+.gitignore
+.DS_Store
+Thumbs.db
