@@ -43,12 +43,21 @@ def build_tools(session_factory: Callable[[], Session], user: User) -> list[Base
     ) -> str:
         """Book a meeting room for the logged-in user.
 
+        Call this ONLY when the user has explicitly provided every argument
+        below. Never invent or default a value just to complete the call: if
+        the title or the end time is missing, ask the user first. There is no
+        default duration and no default title.
+
         Args:
             room: Room letter, "A" to "E".
             start: Booking start, ISO 8601 local time without timezone offset
                 or 'Z' (e.g. 2030-06-15T10:00), aligned to 30-minute slots.
             end: Booking end, same format as start, aligned to 30-minute slots.
-            title: Meeting title (required, e.g. "Interview with John Doe").
+                There is NO default duration: if the user gave only a start
+                time, do NOT call this tool — ask how long the meeting lasts
+                (or until when) and wait for the answer.
+            title: Meeting title exactly as the user states it; never make one
+                up (not from the room, the time, or anything else).
             attendees: Number of attendees; must not exceed the room's capacity.
         """
         try:
