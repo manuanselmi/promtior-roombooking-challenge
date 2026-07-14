@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RoomBooking · Backoffice</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    * { margin: 0; }
+    :root {
+      --bg: #0b0f14;
+      --surface: #121820;
+      --surface-2: #1a222c;
+      --surface-3: #212b37;
+      --border: #263140;
+      --border-soft: #1b232e;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --faint: #5b6672;
+      --accent: #2dd4bf;
+      --accent-strong: #14b8a6;
+      --accent-ink: #04141a;
+      --accent-soft: rgba(45, 212, 191, .14);
+      --accent-line: rgba(45, 212, 191, .55);
+      --danger: #f87171;
+      --danger-strong: #ef4444;
+      --hourpx: 54px;
+      --shadow: 0 24px 60px -30px rgba(0, 0, 0, .8);
+      color-scheme: dark;
+    }
+    html, body { height: 100%; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background:
+        radial-gradient(1100px 600px at 82% -8%, rgba(45, 212, 191, .07), transparent 60%),
+        var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.4;
+    }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    a { color: inherit; }
+
+    .app { max-width: 1180px; margin: 0 auto; padding: clamp(1rem, 2.5vw, 2rem); }
+
+    /* ---------- Top bar ---------- */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; flex-wrap: wrap; margin-bottom: 1.4rem;
+    }
+    .brand { display: flex; align-items: center; gap: .8rem; }
+    .brand-mark {
+      width: 42px; height: 42px; border-radius: 13px; flex: none;
+      background: linear-gradient(150deg, var(--accent), #0891b2);
+      color: var(--accent-ink); font-weight: 800; font-size: .95rem;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 22px -10px rgba(45, 212, 191, .7);
+    }
+    .brand h1 { font-size: 1.12rem; font-weight: 650; letter-spacing: -.01em; }
+    .brand p { color: var(--muted); font-size: .8rem; }
+    .brand p b { color: var(--accent); font-weight: 600; }
+    .link-out {
+      display: inline-flex; align-items: center; gap: .4rem; text-decoration: none;
+      color: var(--muted); font-size: .84rem; font-weight: 500;
+      border: 1px solid var(--border); border-radius: 10px; padding: .5rem .85rem;
+      background: var(--surface); transition: color .15s, border-color .15s, background .15s;
+    }
+    .link-out:hover { color: var(--text); border-color: var(--surface-3); background: var(--surface-2); }
+
+    /* ---------- Toolbar ---------- */
+    .toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;
+    }
+    .rooms { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+    .room-pill {
+      min-width: 40px; height: 38px; padding: 0 .55rem;
+      border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+      color: var(--muted); font-weight: 600; font-size: .9rem;
+      transition: all .15s;
+    }
+    .room-pill:hover { border-color: var(--surface-3); color: var(--text); }
+    .room-pill.active {
+      background: var(--accent-soft); border-color: var(--accent-line);
+      color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line);
+    }
+    .room-cap { color: var(--faint); font-size: .8rem; margin-left: .35rem; align-self: center; }
+
+    .weeknav { display: flex; align-items: center; gap: .5rem; }
+    .nav-btn {
+      width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+      color: var(--muted); font-size: 1.1rem; transition: all .15s;
+    }
+    .nav-btn:hover { border-color: var(--surface-3); color: var(--text); background: var(--surface-2); }
+    .week-label { min-width: 168px; text-align: center; font-size: .9rem; font-weight: 550; }
+    .week-sub { color: var(--muted); font-weight: 400; font-size: .78rem; }
+    .today-btn {
+      height: 38px; padding: 0 .9rem; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--surface); color: var(--text); font-size: .85rem; font-weight: 550;
+      transition: all .15s;
+    }
+    .today-btn:hover { border-color: var(--surface-3); background: var(--surface-2); }
+
+    .meta-row {
+      display: flex; align-items: center; gap: .5rem;
+      color: var(--muted); font-size: .82rem; margin-bottom: .7rem; min-height: 1.1rem;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+    /* ---------- Calendar ---------- */
+    .cal {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+      overflow: hidden; box-shadow: var(--shadow); position: relative;
+    }
+    .cal-head {
+      display: grid; grid-template-columns: 58px repeat(7, 1fr);
+      border-bottom: 1px solid var(--border); background: var(--surface-2);
+    }
+    .corner { border-right: 1px solid var(--border); }
+    .dayhead {
+      padding: .6rem .4rem; text-align: center; border-left: 1px solid var(--border-soft);
+    }
+    .dayhead .dow { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    .dayhead .dnum { font-size: 1.05rem; font-weight: 600; margin-top: .1rem; }
+    .dayhead.today .dnum {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 1.9rem; height: 1.9rem; border-radius: 999px;
+      background: var(--accent); color: var(--accent-ink);
+    }
+    .dayhead.today .dow { color: var(--accent); }
+
+    .cal-body {
+      display: grid; grid-template-columns: 58px repeat(7, 1fr);
+      max-height: 68vh; overflow-y: auto;
+    }
+    .axis { position: relative; border-right: 1px solid var(--border); }
+    .axis .hour {
+      position: absolute; right: .5rem; transform: translateY(-50%);
+      font-size: .72rem; color: var(--faint); white-space: nowrap;
+    }
+    .day-col {
+      position: relative; border-left: 1px solid var(--border-soft);
+      background-image: repeating-linear-gradient(
+        to bottom,
+        var(--border-soft) 0, var(--border-soft) 1px,
+        transparent 1px, transparent var(--hourpx)
+      );
+    }
+    .day-col.weekend { background-color: rgba(255, 255, 255, .012); }
+    .day-col.today { background-color: rgba(45, 212, 191, .045); }
+
+    .event {
+      position: absolute; left: 4px; right: 4px; min-height: 20px;
+      background: var(--accent-soft); border: 1px solid var(--accent-line);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px; padding: .28rem .45rem; overflow: hidden;
+      cursor: pointer; transition: transform .1s, box-shadow .15s, background .15s;
+    }
+    .event:hover { background: rgba(45, 212, 191, .22); box-shadow: 0 6px 18px -8px rgba(45, 212, 191, .5); z-index: 3; }
+    .event .ev-time { font-size: .68rem; color: var(--accent); font-weight: 600; }
+    .event .ev-title { font-size: .78rem; font-weight: 550; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .event .ev-sub { font-size: .68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* overlay states over the grid */
+    .overlay {
+      position: absolute; inset: 58px 0 0 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: .5rem; text-align: center;
+      color: var(--muted); pointer-events: none; padding: 1rem;
+    }
+    .overlay[hidden] { display: none; }
+    .overlay .big { font-size: 2rem; }
+    .overlay .t { color: var(--text); font-weight: 600; }
+    .overlay.err .t { color: var(--danger); }
+    .spinner {
+      width: 30px; height: 30px; border-radius: 50%;
+      border: 3px solid var(--surface-3); border-top-color: var(--accent);
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---------- Detail drawer ---------- */
+    .backdrop {
+      position: fixed; inset: 0; background: rgba(2, 6, 10, .6);
+      backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 20;
+    }
+    .backdrop.open { opacity: 1; pointer-events: auto; }
+    .drawer {
+      position: fixed; top: 0; right: 0; height: 100%; width: min(400px, 92vw);
+      background: var(--surface); border-left: 1px solid var(--border);
+      box-shadow: -30px 0 60px -30px rgba(0, 0, 0, .9);
+      transform: translateX(100%); transition: transform .24s cubic-bezier(.4, 0, .2, 1);
+      z-index: 21; display: flex; flex-direction: column;
+    }
+    .drawer.open { transform: none; }
+    .drawer-head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+      padding: 1.3rem 1.4rem 1rem; border-bottom: 1px solid var(--border);
+    }
+    .drawer-head .badge {
+      display: inline-flex; align-items: center; gap: .4rem; font-size: .74rem; font-weight: 600;
+      color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-line);
+      border-radius: 999px; padding: .2rem .6rem; margin-bottom: .55rem;
+    }
+    .drawer-head h2 { font-size: 1.15rem; font-weight: 650; letter-spacing: -.01em; line-height: 1.25; }
+    .x-btn {
+      flex: none; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--muted); font-size: 1rem; line-height: 1;
+      transition: all .15s;
+    }
+    .x-btn:hover { color: var(--text); border-color: var(--surface-3); }
+    .drawer-body { padding: 1.2rem 1.4rem; display: flex; flex-direction: column; gap: .1rem; flex: 1; overflow-y: auto; }
+    .field { display: flex; align-items: center; gap: .8rem; padding: .7rem 0; border-bottom: 1px solid var(--border-soft); }
+    .field:last-of-type { border-bottom: 0; }
+    .field .k { color: var(--muted); font-size: .82rem; width: 92px; flex: none; }
+    .field .v { font-size: .9rem; font-weight: 500; }
+    .drawer-foot { padding: 1.1rem 1.4rem; border-top: 1px solid var(--border); }
+    .btn-danger {
+      width: 100%; padding: .7rem; border: 1px solid rgba(248, 113, 113, .4); border-radius: 11px;
+      background: rgba(248, 113, 113, .1); color: var(--danger); font-weight: 600; font-size: .9rem;
+      transition: all .15s;
+    }
+    .btn-danger:hover { background: rgba(248, 113, 113, .18); border-color: var(--danger); }
+    .confirm { display: flex; flex-direction: column; gap: .6rem; }
+    .confirm p { font-size: .82rem; color: var(--muted); text-align: center; }
+    .confirm-row { display: flex; gap: .6rem; }
+    .btn-keep {
+      flex: 1; padding: .65rem; border: 1px solid var(--border); border-radius: 11px;
+      background: var(--surface-2); color: var(--text); font-weight: 550; font-size: .88rem; transition: all .15s;
+    }
+    .btn-keep:hover { background: var(--surface-3); }
+    .btn-confirm {
+      flex: 1; padding: .65rem; border: 1px solid var(--danger-strong); border-radius: 11px;
+      background: var(--danger-strong); color: #fff; font-weight: 600; font-size: .88rem; transition: all .15s;
+    }
+    .btn-confirm:hover { background: #dc2626; }
+    .btn-confirm:disabled, .btn-danger:disabled { opacity: .55; cursor: default; }
+
+    /* ---------- Toast ---------- */
+    .toast {
+      position: fixed; left: 50%; bottom: 1.6rem; transform: translate(-50%, 1.5rem);
+      background: var(--surface-3); border: 1px solid var(--border); color: var(--text);
+      padding: .7rem 1.1rem; border-radius: 12px; font-size: .87rem; font-weight: 500;
+      box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: all .25s; z-index: 40;
+      display: flex; align-items: center; gap: .55rem;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.ok { border-color: var(--accent-line); }
+    .toast .ic { color: var(--accent); font-weight: 700; }
+    .toast.bad .ic { color: var(--danger); }
+
+    @media (max-width: 760px) {
+      .cal-head, .cal-body { grid-template-columns: 44px repeat(7, minmax(56px, 1fr)); }
+      .cal-body { overflow-x: auto; }
+      .week-label { min-width: 130px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-mark">RB</div>
+        <div>
+          <h1>RoomBooking · Backoffice</h1>
+          <p>Booked slots by room · <b>Cubo Itaú</b> office</p>
+        </div>
+      </div>
+      <a class="link-out" href="/">Open assistant &rarr;</a>
+    </div>
+
+    <div class="toolbar">
+      <div class="rooms" id="rooms"></div>
+      <div class="weeknav">
+        <button class="nav-btn" id="prev" aria-label="Previous week">&lsaquo;</button>
+        <div class="week-label" id="week-label">—</div>
+        <button class="nav-btn" id="next" aria-label="Next week">&rsaquo;</button>
+        <button class="today-btn" id="today">This week</button>
+      </div>
+    </div>
+
+    <div class="meta-row"><span class="dot"></span><span id="meta">Loading…</span></div>
+
+    <div class="cal">
+      <div class="cal-head" id="cal-head"></div>
+      <div class="cal-body" id="cal-body"></div>
+      <div class="overlay" id="overlay" hidden></div>
+    </div>
+  </div>
+
+  <!-- Detail drawer -->
+  <div class="backdrop" id="backdrop"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <span class="badge" id="d-room">Room —</span>
+        <h2 id="d-title">—</h2>
+      </div>
+      <button class="x-btn" id="d-close" aria-label="Close">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><span class="k">When</span><span class="v" id="d-when">—</span></div>
+      <div class="field"><span class="k">Time</span><span class="v" id="d-time">—</span></div>
+      <div class="field"><span class="k">Organizer</span><span class="v" id="d-user">—</span></div>
+      <div class="field"><span class="k">Attendees</span><span class="v" id="d-att">—</span></div>
+      <div class="field"><span class="k">Booking ID</span><span class="v" id="d-id">—</span></div>
+    </div>
+    <div class="drawer-foot" id="drawer-foot"></div>
+  </aside>
+
+  <div class="toast" id="toast"><span class="ic" id="toast-ic">✓</span><span id="toast-msg"></span></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const HOUR_PX = 54;          // keep in sync with --hourpx
+    const DEFAULT_START = 8;     // business-hours window shown even on empty weeks
+    const DEFAULT_END = 19;
+    const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+    let rooms = [];
+    let selectedRoom = null;
+    let weekStart = startOfWeek(new Date());
+    let bookings = [];           // for the current week, all rooms
+    let selected = null;         // booking shown in the drawer
+
+    // ---------- date helpers (all local, matching the app's naive-local storage) ----------
+    function startOfWeek(d) {
+      const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const dow = (x.getDay() + 6) % 7;         // Mon = 0
+      x.setDate(x.getDate() - dow);
+      return x;
+    }
+    function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+    function sameDay(a, b) {
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    }
+    function pad(n) { return String(n).padStart(2, "0"); }
+    function fmtLocalNaive(d) {
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
+    }
+    function fmtHM(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+    function fmtLongDate(d) { return `${DOW[(d.getDay() + 6) % 7]}, ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`; }
+
+    // ---------- data ----------
+    async function loadRooms() {
+      const res = await fetch("/backoffice/api/rooms");
+      rooms = await res.json();
+      if (!selectedRoom && rooms.length) selectedRoom = rooms[0].id;
+      renderRooms();
+    }
+
+    async function loadWeek() {
+      showOverlay("loading");
+      const start = fmtLocalNaive(weekStart);
+      const end = fmtLocalNaive(addDays(weekStart, 7));
+      try {
+        const res = await fetch(`/backoffice/api/bookings?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+        if (!res.ok) throw new Error("bad status " + res.status);
+        bookings = (await res.json()).map((b) => ({ ...b, _start: new Date(b.start), _end: new Date(b.end) }));
+        render();
+      } catch (e) {
+        showOverlay("error");
+        $("meta").textContent = "Could not load bookings.";
+      }
+    }
+
+    // ---------- rendering ----------
+    function renderRooms() {
+      const el = $("rooms");
+      el.innerHTML = "";
+      rooms.forEach((r) => {
+        const b = document.createElement("button");
+        b.className = "room-pill" + (r.id === selectedRoom ? " active" : "");
+        b.textContent = r.id;
+        b.title = `Room ${r.id} · up to ${r.capacity} people`;
+        b.onclick = () => { selectedRoom = r.id; renderRooms(); render(); };
+        el.appendChild(b);
+      });
+      const cap = document.createElement("span");
+      cap.className = "room-cap";
+      const room = rooms.find((r) => r.id === selectedRoom);
+      cap.textContent = room ? `Room ${room.id} · up to ${room.capacity} people` : "";
+      el.appendChild(cap);
+    }
+
+    function render() {
+      const wkEnd = addDays(weekStart, 6);
+      const crossMonth = weekStart.getMonth() !== wkEnd.getMonth();
+      $("week-label").innerHTML =
+        `${weekStart.getDate()} ${crossMonth ? MONTHS[weekStart.getMonth()] : ""} – ${wkEnd.getDate()} ${MONTHS[wkEnd.getMonth()]} ` +
+        `<span class="week-sub">${wkEnd.getFullYear()}</span>`;
+
+      const mine = bookings
+        .filter((b) => b.room_id === selectedRoom)
+        .sort((a, b) => a._start - b._start);
+
+      $("meta").textContent = mine.length
+        ? `${mine.length} booking${mine.length > 1 ? "s" : ""} for room ${selectedRoom} this week`
+        : `No bookings for room ${selectedRoom} this week`;
+
+      // dynamic vertical window: business hours, expanded to fit any booking
+      let startH = DEFAULT_START, endH = DEFAULT_END;
+      mine.forEach((b) => {
+        startH = Math.min(startH, b._start.getHours());
+        endH = Math.max(endH, b._end.getHours() + (b._end.getMinutes() > 0 ? 1 : 0));
+      });
+      startH = Math.max(0, startH);
+      endH = Math.min(24, Math.max(endH, startH + 1));
+      const rows = endH - startH;
+      const colH = rows * HOUR_PX;
+
+      renderHead();
+      renderBody(startH, endH, colH, mine);
+
+      if (mine.length === 0) showOverlay("empty");
+      else hideOverlay();
+    }
+
+    function renderHead() {
+      const head = $("cal-head");
+      head.innerHTML = '<div class="corner"></div>';
+      const today = new Date();
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(weekStart, i);
+        const cell = document.createElement("div");
+        cell.className = "dayhead" + (sameDay(d, today) ? " today" : "");
+        cell.innerHTML = `<div class="dow">${DOW[i]}</div><div class="dnum">${d.getDate()}</div>`;
+        head.appendChild(cell);
+      }
+    }
+
+    function renderBody(startH, endH, colH, mine) {
+      const body = $("cal-body");
+      body.innerHTML = "";
+
+      // hour axis
+      const axis = document.createElement("div");
+      axis.className = "axis";
+      axis.style.height = colH + "px";
+      for (let h = startH; h <= endH; h++) {
+        const lbl = document.createElement("div");
+        lbl.className = "hour";
+        lbl.style.top = (h - startH) * HOUR_PX + "px";
+        lbl.textContent = pad(h) + ":00";
+        axis.appendChild(lbl);
+      }
+      body.appendChild(axis);
+
+      const today = new Date();
+      for (let i = 0; i < 7; i++) {
+        const day = addDays(weekStart, i);
+        const col = document.createElement("div");
+        col.className = "day-col" + (i >= 5 ? " weekend" : "") + (sameDay(day, today) ? " today" : "");
+        col.style.height = colH + "px";
+
+        mine.filter((b) => sameDay(b._start, day)).forEach((b) => {
+          col.appendChild(makeEvent(b, startH, colH));
+        });
+        body.appendChild(col);
+      }
+    }
+
+    function makeEvent(b, startH, colH) {
+      const dayStartMin = startH * 60;
+      const s = b._start.getHours() * 60 + b._start.getMinutes();
+      const e = b._end.getHours() * 60 + b._end.getMinutes();
+      const top = Math.max(0, ((s - dayStartMin) / 60) * HOUR_PX);
+      const bottom = Math.min(colH, ((e - dayStartMin) / 60) * HOUR_PX);
+      const ev = document.createElement("div");
+      ev.className = "event";
+      ev.style.top = top + "px";
+      ev.style.height = Math.max(20, bottom - top) + "px";
+      const compact = (bottom - top) < 44;
+      ev.innerHTML =
+        `<div class="ev-time">${fmtHM(b._start)}–${fmtHM(b._end)}</div>` +
+        `<div class="ev-title">${escapeHtml(b.title)}</div>` +
+        (compact ? "" : `<div class="ev-sub">${escapeHtml(b.user)} · ${b.attendees}p</div>`);
+      ev.onclick = () => openDrawer(b);
+      return ev;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    // ---------- overlay ----------
+    function showOverlay(kind) {
+      const o = $("overlay");
+      o.hidden = false;
+      o.className = "overlay" + (kind === "error" ? " err" : "");
+      if (kind === "loading") o.innerHTML = '<div class="spinner"></div>';
+      else if (kind === "empty")
+        o.innerHTML = '<div class="big">🗓️</div><div class="t">No bookings this week</div>' +
+          '<div>Nothing scheduled for room ' + selectedRoom + '.</div>';
+      else if (kind === "error")
+        o.innerHTML = '<div class="big">⚠️</div><div class="t">Something went wrong</div>' +
+          '<div>Could not reach the server. Try again.</div>';
+    }
+    function hideOverlay() { $("overlay").hidden = true; }
+
+    // ---------- drawer ----------
+    function openDrawer(b) {
+      selected = b;
+      $("d-room").textContent = "Room " + b.room_id;
+      $("d-title").textContent = b.title;
+      $("d-when").textContent = fmtLongDate(b._start);
+      $("d-time").textContent = `${fmtHM(b._start)} – ${fmtHM(b._end)}`;
+      $("d-user").textContent = b.user;
+      $("d-att").textContent = b.attendees + (b.attendees === 1 ? " person" : " people");
+      $("d-id").textContent = "#" + b.id;
+      resetFoot();
+      $("drawer").classList.add("open");
+      $("drawer").setAttribute("aria-hidden", "false");
+      $("backdrop").classList.add("open");
+    }
+    function closeDrawer() {
+      $("drawer").classList.remove("open");
+      $("drawer").setAttribute("aria-hidden", "true");
+      $("backdrop").classList.remove("open");
+      selected = null;
+    }
+    function resetFoot() {
+      const foot = $("drawer-foot");
+      foot.innerHTML = '<button class="btn-danger" id="cancel-btn">Cancel booking</button>';
+      $("cancel-btn").onclick = askConfirm;
+    }
+    function askConfirm() {
+      const foot = $("drawer-foot");
+      foot.innerHTML =
+        '<div class="confirm"><p>This permanently cancels the booking for everyone.</p>' +
+        '<div class="confirm-row"><button class="btn-keep" id="keep">Keep it</button>' +
+        '<button class="btn-confirm" id="confirm">Confirm cancel</button></div></div>';
+      $("keep").onclick = resetFoot;
+      $("confirm").onclick = doCancel;
+    }
+    async function doCancel() {
+      if (!selected) return;
+      const btn = $("confirm");
+      btn.disabled = true; btn.textContent = "Cancelling…";
+      try {
+        const res = await fetch(`/backoffice/api/bookings/${selected.id}`, { method: "DELETE" });
+        if (res.ok) {
+          const title = selected.title;
+          closeDrawer();
+          await loadWeek();
+          toast(`Cancelled “${title}”.`, "ok");
+        } else if (res.status === 404) {
+          closeDrawer();
+          await loadWeek();
+          toast("That booking was already gone.", "bad");
+        } else {
+          throw new Error("status " + res.status);
+        }
+      } catch (e) {
+        btn.disabled = false; btn.textContent = "Confirm cancel";
+        toast("Could not cancel. Try again.", "bad");
+      }
+    }
+
+    // ---------- toast ----------
+    let toastTimer = null;
+    function toast(msg, kind) {
+      $("toast-msg").textContent = msg;
+      $("toast-ic").textContent = kind === "bad" ? "!" : "✓";
+      const t = $("toast");
+      t.className = "toast show " + (kind === "bad" ? "bad" : "ok");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = "toast " + (kind === "bad" ? "bad" : "ok"); }, 3200);
+    }
+
+    // ---------- events ----------
+    $("prev").onclick = () => { weekStart = addDays(weekStart, -7); loadWeek(); };
+    $("next").onclick = () => { weekStart = addDays(weekStart, 7); loadWeek(); };
+    $("today").onclick = () => { weekStart = startOfWeek(new Date()); loadWeek(); };
+    $("d-close").onclick = closeDrawer;
+    $("backdrop").onclick = closeDrawer;
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+
+    // ---------- boot ----------
+    (async () => { await loadRooms(); await loadWeek(); })();
+  </script>
+</body>
+</html>

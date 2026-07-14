@@ -225,6 +225,55 @@ class TestListUserBookings:
         assert all(b.user_id == user1.id for b in result)
 
 
+class TestListBookingsInRange:
+    """Backoffice view: every user's bookings, optionally filtered to one room."""
+
+    def test_spans_all_users(self, session, user1, user2):
+        make(session, user1, room_id="B", start=t(10), end=t(11))
+        make(session, user2, room_id="C", start=t(12), end=t(13))
+        result = service.list_bookings_in_range(session, t(9), t(14))
+        assert {b.user_id for b in result} == {user1.id, user2.id}
+
+    def test_only_overlapping_range(self, session, user1):
+        make(session, user1, room_id="B", start=t(10), end=t(11))
+        make(session, user1, room_id="C", start=t(10, 0, day=16), end=t(11, 0, day=16))
+        result = service.list_bookings_in_range(session, t(9), t(12))
+        assert [b.room_id for b in result] == ["B"]
+
+    def test_room_filter(self, session, user1, user2):
+        make(session, user1, room_id="B", start=t(10), end=t(11))
+        make(session, user2, room_id="C", start=t(10), end=t(11))
+        result = service.list_bookings_in_range(session, t(9), t(12), room_id="b")
+        assert [b.room_id for b in result] == ["B"]
+
+    def test_ordered_by_room_then_start(self, session, user1):
+        make(session, user1, room_id="C", start=t(12), end=t(13))
+        make(session, user1, room_id="B", start=t(14), end=t(15))
+        make(session, user1, room_id="B", start=t(10), end=t(11))
+        result = service.list_bookings_in_range(session, t(9), t(16))
+        assert [(b.room_id, b.start) for b in result] == [("B", t(10)), ("B", t(14)), ("C", t(12))]
+
+    def test_invalid_range_rejected(self, session, user1):
+        with pytest.raises(BookingError, match="after the start"):
+            service.list_bookings_in_range(session, t(12), t(10))
+
+
+class TestAdminCancelBooking:
+    def test_cancels_any_users_booking(self, session, user1, user2):
+        booking = make(session, user1)
+        service.admin_cancel_booking(session, booking_id=booking.id)
+        assert service.list_bookings_in_range(session, t(0, 0, day=1), t(0, 0, day=28)) == []
+
+    def test_cancel_frees_the_slot(self, session, user1, user2):
+        booking = make(session, user1)
+        service.admin_cancel_booking(session, booking_id=booking.id)
+        assert make(session, user2).id is not None
+
+    def test_nonexistent_rejected(self, session):
+        with pytest.raises(BookingError, match="does not exist"):
+            service.admin_cancel_booking(session, booking_id=999)
+
+
 class TestDoubleBookingRace:
     """FastAPI serves sync endpoints from a threadpool, so create_booking must
     stay correct under real thread concurrency (the check-then-insert race)."""

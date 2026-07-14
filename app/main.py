@@ -7,9 +7,10 @@ LangGraph thread_id: a new login starts a fresh conversation (D12).
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langchain_core.messages import HumanMessage
@@ -19,8 +20,10 @@ from sqlalchemy.orm import Session
 
 from app.agent.agent import build_agent
 from app.auth import create_token, decode_token, hash_password, verify_password
+from app.booking import service
 from app.booking.db import init_db, make_engine
-from app.booking.models import User
+from app.booking.models import Booking, Room, User
+from app.booking.service import BookingError
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -127,6 +130,76 @@ def _last_ai_text(messages: list) -> str:
         return content
     # Content blocks (rare with plain-text models): keep only the text parts.
     return "".join(part.get("text", "") for part in content if isinstance(part, dict))
+
+
+# --- Backoffice: unauthenticated operator view over every booking (D16) --------
+# Reached through a public link with no login by product decision: it exists to
+# eyeball and correct the data (a room's week at a glance, cancel anything). It
+# reuses the same service layer, so the booking rules stay in one place.
+
+
+class RoomOut(BaseModel):
+    id: str
+    capacity: int
+
+
+class BookingOut(BaseModel):
+    id: int
+    room_id: str
+    title: str
+    user: str
+    attendees: int
+    start: datetime
+    end: datetime
+
+
+def _booking_out(b: Booking) -> BookingOut:
+    return BookingOut(
+        id=b.id,
+        room_id=b.room_id,
+        title=b.title,
+        user=b.user.username,
+        attendees=b.attendees,
+        start=b.start,
+        end=b.end,
+    )
+
+
+def _naive(dt: datetime) -> datetime:
+    """Drop any timezone offset: the app stores and compares naive local time (D10)."""
+    return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+
+@app.get("/backoffice/api/rooms", response_model=list[RoomOut], include_in_schema=False)
+def backoffice_rooms(session: Session = Depends(get_session)) -> list[Room]:
+    return list(session.scalars(select(Room).order_by(Room.id)))
+
+
+@app.get("/backoffice/api/bookings", response_model=list[BookingOut], include_in_schema=False)
+def backoffice_bookings(
+    start: datetime = Query(...),
+    end: datetime = Query(...),
+    session: Session = Depends(get_session),
+) -> list[BookingOut]:
+    """Every booking overlapping [start, end), across all users and rooms."""
+    try:
+        bookings = service.list_bookings_in_range(session, _naive(start), _naive(end))
+    except BookingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return [_booking_out(b) for b in bookings]
+
+
+@app.delete("/backoffice/api/bookings/{booking_id}", status_code=204, include_in_schema=False)
+def backoffice_cancel(booking_id: int, session: Session = Depends(get_session)) -> None:
+    try:
+        service.admin_cancel_booking(session, booking_id=booking_id)
+    except BookingError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/backoffice", include_in_schema=False)
+def backoffice() -> FileResponse:
+    return FileResponse(STATIC_DIR / "backoffice.html")
 
 
 @app.get("/health", include_in_schema=False)

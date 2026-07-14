@@ -1,12 +1,18 @@
 """API-level tests: auth flow and endpoint contracts. The agent is mocked —
 no LLM calls — so these verify the HTTP wiring, not the model behaviour."""
 
+from datetime import datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 import app.main as main
+from app.booking import service
 from app.booking.db import make_engine
+from app.booking.models import User
 from app.config import settings
 
 CREDS = {"username": "User1", "password": "TechnicalChallengePromtior"}
@@ -95,6 +101,94 @@ class TestChat:
         headers2 = {"Authorization": f"Bearer {login(client)}"}
         client.post("/chat", json={"message": "b"}, headers=headers2)
         assert fake_agent["thread_id"] != thread1
+
+
+def seed_booking(username="User1", *, room="B", day=15, start_h=10, end_h=11, title="Team sync"):
+    """Create a booking directly through the service, on the app's live engine."""
+    with Session(main.engine) as s:
+        user = s.scalar(select(User).where(User.username == username))
+        b = service.create_booking(
+            s,
+            user=user,
+            room_id=room,
+            start=datetime(2030, 6, day, start_h),
+            end=datetime(2030, 6, day, end_h),
+            title=title,
+            attendees=2,
+        )
+        return b.id
+
+
+class TestBackoffice:
+    """Public (no-auth) operator endpoints powering the calendar view."""
+
+    def test_rooms_lists_a_to_e(self, client):
+        res = client.get("/backoffice/api/rooms")
+        assert res.status_code == 200
+        assert [r["id"] for r in res.json()] == ["A", "B", "C", "D", "E"]
+
+    def test_needs_no_auth(self, client):
+        # No Authorization header at all — the backoffice is a public link (D16).
+        assert client.get("/backoffice/api/rooms").status_code == 200
+
+    def test_bookings_empty_range(self, client):
+        res = client.get(
+            "/backoffice/api/bookings",
+            params={"start": "2030-06-15T00:00:00", "end": "2030-06-16T00:00:00"},
+        )
+        assert res.status_code == 200
+        assert res.json() == []
+
+    def test_bookings_returns_seeded_with_organizer(self, client):
+        seed_booking(title="Design review")
+        res = client.get(
+            "/backoffice/api/bookings",
+            params={"start": "2030-06-15T00:00:00", "end": "2030-06-16T00:00:00"},
+        )
+        assert res.status_code == 200
+        [b] = res.json()
+        assert b["room_id"] == "B"
+        assert b["title"] == "Design review"
+        assert b["user"] == "User1"
+        assert b["attendees"] == 2
+
+    def test_bookings_outside_range_excluded(self, client):
+        seed_booking(day=20)
+        res = client.get(
+            "/backoffice/api/bookings",
+            params={"start": "2030-06-15T00:00:00", "end": "2030-06-16T00:00:00"},
+        )
+        assert res.json() == []
+
+    def test_bookings_accepts_tz_aware_input(self, client):
+        # The frontend sends naive local time, but an offset must not 500 (D10/D16).
+        seed_booking()
+        res = client.get(
+            "/backoffice/api/bookings",
+            params={"start": "2030-06-15T00:00:00-03:00", "end": "2030-06-16T00:00:00-03:00"},
+        )
+        assert res.status_code == 200
+        assert len(res.json()) == 1
+
+    def test_bookings_requires_range(self, client):
+        assert client.get("/backoffice/api/bookings").status_code == 422
+
+    def test_cancel_removes_any_booking(self, client):
+        booking_id = seed_booking()
+        assert client.delete(f"/backoffice/api/bookings/{booking_id}").status_code == 204
+        res = client.get(
+            "/backoffice/api/bookings",
+            params={"start": "2030-06-15T00:00:00", "end": "2030-06-16T00:00:00"},
+        )
+        assert res.json() == []
+
+    def test_cancel_unknown_is_404(self, client):
+        assert client.delete("/backoffice/api/bookings/999").status_code == 404
+
+    def test_page_served(self, client):
+        res = client.get("/backoffice")
+        assert res.status_code == 200
+        assert "Backoffice" in res.text
 
 
 class TestStatic:

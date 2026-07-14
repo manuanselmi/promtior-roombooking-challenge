@@ -176,3 +176,34 @@ def cancel_booking(session: Session, *, user: User, booking_id: int) -> Booking:
     session.delete(booking)
     session.commit()
     return booking
+
+
+# --- Backoffice (admin) helpers -------------------------------------------------
+# These bypass the per-user ownership rule on purpose: the backoffice is an
+# operator/verification view over every booking, reached through an unauthenticated
+# link (D16). They live here, next to the rules they intentionally sidestep, rather
+# than in the API layer, so the "who can do what" story stays in one place.
+
+
+def list_bookings_in_range(
+    session: Session, start: datetime, end: datetime, *, room_id: str | None = None
+) -> list[Booking]:
+    """All bookings overlapping [start, end), across every user, optionally one room.
+
+    Ordered by room then start so the backoffice can group them without re-sorting.
+    """
+    _validate_query_range(start, end)
+    stmt = select(Booking).where(Booking.start < end, Booking.end > start)
+    if room_id is not None:
+        stmt = stmt.where(Booking.room_id == room_id.strip().upper())
+    return list(session.scalars(stmt.order_by(Booking.room_id, Booking.start)))
+
+
+def admin_cancel_booking(session: Session, *, booking_id: int) -> Booking:
+    """Cancel any booking regardless of who created it (backoffice, D16)."""
+    booking = session.get(Booking, booking_id)
+    if booking is None:
+        raise BookingError(f"Booking {booking_id} does not exist.")
+    session.delete(booking)
+    session.commit()
+    return booking
