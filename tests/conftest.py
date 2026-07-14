@@ -1,15 +1,26 @@
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
-from app.booking.db import init_db
+from app.booking.db import init_db, make_engine
 from app.booking.models import User
 
 
 @pytest.fixture()
-def session():
-    engine = create_engine("sqlite://")  # in-memory
+def engine(tmp_path):
+    # A temp file (not in-memory) so every session — including the per-tool-call
+    # sessions build_tools opens — sees the same database, as in production.
+    engine = make_engine(f"sqlite:///{tmp_path}/test.db")
     init_db(engine, users={"User1": "irrelevant-hash", "User2": "irrelevant-hash"})
+    return engine
+
+
+@pytest.fixture()
+def session_factory(engine):
+    return sessionmaker(engine)
+
+
+@pytest.fixture()
+def session(engine):
     with Session(engine) as s:
         yield s
 

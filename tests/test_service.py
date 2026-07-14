@@ -1,7 +1,7 @@
 """Business-rule tests for app.booking.service — no LLM involved."""
 
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import select
@@ -82,6 +82,31 @@ class TestCreateBooking:
     def test_past_booking_rejected(self, session, user1):
         with pytest.raises(BookingError, match="past"):
             make(session, user1, start=datetime(2020, 1, 1, 10), end=datetime(2020, 1, 1, 11))
+
+
+class TestTimezoneAwareInputs:
+    """All datetimes are naive local time; timezone-aware inputs must be
+    rejected as a BookingError, never crash with TypeError (naive vs aware)
+    or silently ignore the offset in SQL."""
+
+    AWARE = datetime(2030, 6, 15, 10, 0, tzinfo=timezone.utc)
+    AWARE_END = datetime(2030, 6, 15, 11, 0, tzinfo=timezone.utc)
+
+    def test_create_with_aware_start_rejected(self, session, user1):
+        with pytest.raises(BookingError, match="offset"):
+            make(session, user1, start=self.AWARE, end=self.AWARE_END)
+
+    def test_create_with_only_aware_end_rejected(self, session, user1):
+        with pytest.raises(BookingError, match="offset"):
+            make(session, user1, start=t(10), end=self.AWARE_END)
+
+    def test_list_available_rooms_aware_rejected(self, session):
+        with pytest.raises(BookingError, match="offset"):
+            service.list_available_rooms(session, self.AWARE, self.AWARE_END)
+
+    def test_room_schedule_aware_rejected(self, session):
+        with pytest.raises(BookingError, match="offset"):
+            service.get_room_schedule(session, "B", self.AWARE, self.AWARE_END)
 
 
 class TestOverlaps:

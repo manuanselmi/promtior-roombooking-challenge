@@ -6,6 +6,7 @@ Conversation state lives in a process-wide checkpointer keyed by thread_id,
 one thread per login session (D11).
 """
 
+from collections.abc import Callable
 from datetime import datetime
 
 from langchain.agents import create_agent
@@ -47,7 +48,8 @@ Behaviour:
 - Use the tools for ANY information about rooms, schedules or bookings. Never
   guess or invent availability, bookings or IDs.
 - Resolve relative dates ("tomorrow at 10") from the current date above and
-  pass tools ISO 8601 local times. If a date is ambiguous, ask.
+  pass tools ISO 8601 local times WITHOUT a timezone offset or 'Z' suffix
+  (e.g. 2030-06-15T10:00). If a date is ambiguous, ask.
 - If required data is missing (room, times, title, attendees), ask for it
   instead of assuming.
 - Before cancelling, make sure which booking the user means (list_my_bookings
@@ -60,13 +62,13 @@ Behaviour:
 """
 
 
-def build_agent(session: Session, user: User, now: datetime | None = None):
+def build_agent(session_factory: Callable[[], Session], user: User, now: datetime | None = None):
     now = now or datetime.now()
     rooms = ", ".join(f"{room} (up to {cap} people)" for room, cap in ROOM_CAPACITIES.items())
     model = ChatOpenAI(model=settings.openai_model, api_key=settings.openai_api_key, temperature=0)
     return create_agent(
         model,
-        tools=build_tools(session, user),
+        tools=build_tools(session_factory, user),
         system_prompt=SYSTEM_PROMPT.format(
             username=user.username, now=f"{now:%A %Y-%m-%d %H:%M}", rooms=rooms
         ),

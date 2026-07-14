@@ -6,6 +6,8 @@ Verifies the two properties the agent design relies on (D11):
    only relay them.
 """
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from langchain_core.tools import BaseTool
 
@@ -26,13 +28,13 @@ BOOKING = {
 
 
 @pytest.fixture()
-def tools_u1(session, user1):
-    return build_tools(session, user1)
+def tools_u1(session_factory, user1):
+    return build_tools(session_factory, user1)
 
 
 @pytest.fixture()
-def tools_u2(session, user2):
-    return build_tools(session, user2)
+def tools_u2(session_factory, user2):
+    return build_tools(session_factory, user2)
 
 
 class TestCreateBookingTool:
@@ -101,3 +103,55 @@ class TestQueryTools:
             {"start": "2030-06-15T11:00:00", "end": "2030-06-15T10:00:00"}
         )
         assert result.startswith("INVALID RANGE:")
+
+
+class TestTimezoneAwareInputs:
+    """The LLM sometimes appends 'Z' or an offset to ISO datetimes; pydantic then
+    parses them as timezone-aware. That must come back as a rejection string the
+    agent can relay — never as an unhandled TypeError."""
+
+    def test_create_with_utc_suffix_rejected(self, tools_u1):
+        result = get(tools_u1, "create_booking").invoke(
+            {**BOOKING, "start": "2030-06-15T10:00:00Z", "end": "2030-06-15T11:00:00Z"}
+        )
+        assert result.startswith("BOOKING REJECTED:")
+        assert "offset" in result
+
+    def test_schedule_with_offset_rejected(self, tools_u1):
+        result = get(tools_u1, "get_room_schedule").invoke(
+            {"room": "B", "start": "2030-06-15T10:00:00-03:00", "end": "2030-06-15T12:00:00-03:00"}
+        )
+        assert result.startswith("INVALID REQUEST:")
+        assert "offset" in result
+
+    def test_available_rooms_with_offset_rejected(self, tools_u1):
+        result = get(tools_u1, "list_available_rooms").invoke(
+            {"start": "2030-06-15T10:00:00+00:00", "end": "2030-06-15T11:00:00+00:00"}
+        )
+        assert result.startswith("INVALID RANGE:")
+        assert "offset" in result
+
+
+class TestParallelToolCalls:
+    """LangChain's ToolNode runs the tool calls of a single model turn on
+    separate threads. Each tool invocation opens its own session, so mixed
+    reads and writes must stay correct under that concurrency (D14)."""
+
+    def test_concurrent_creates_and_reads_are_isolated(self, tools_u1):
+        create = get(tools_u1, "create_booking")
+        schedule = get(tools_u1, "get_room_schedule")
+        for day in range(1, 11):
+            when = {
+                "start": f"2030-06-{day:02d}T10:00:00",
+                "end": f"2030-06-{day:02d}T11:00:00",
+            }
+            calls = [
+                (create, {**BOOKING, **when, "room": "B"}),
+                (create, {**BOOKING, **when, "room": "C"}),
+                (schedule, {"room": "A", **when}),
+            ]
+            with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+                results = list(pool.map(lambda c: c[0].invoke(c[1]), calls))
+            assert results[0].startswith("Booking confirmed."), results[0]
+            assert results[1].startswith("Booking confirmed."), results[1]
+            assert results[2].startswith("Schedule for room A"), results[2]

@@ -52,6 +52,13 @@ def get_session():
         yield session
 
 
+def make_session() -> Session:
+    """Session factory for the agent's tools: one fresh session per tool call,
+    because parallel tool calls run on separate threads (D14). Resolves
+    `engine` at call time so tests can swap it."""
+    return Session(engine)
+
+
 def get_current_auth(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     session: Session = Depends(get_session),
@@ -96,7 +103,6 @@ def login(body: LoginRequest, session: Session = Depends(get_session)) -> LoginR
 def chat(
     body: ChatRequest,
     auth: tuple[User, str] = Depends(get_current_auth),
-    session: Session = Depends(get_session),
 ) -> ChatResponse:
     user, session_id = auth
     if not settings.openai_api_key:
@@ -104,7 +110,7 @@ def chat(
             status_code=503, detail="Server misconfigured: OPENAI_API_KEY is not set"
         )
     try:
-        agent = build_agent(session, user)
+        agent = build_agent(make_session, user)
         result = agent.invoke(
             {"messages": [HumanMessage(body.message)]},
             config={"configurable": {"thread_id": session_id}},

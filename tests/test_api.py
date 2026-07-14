@@ -31,7 +31,7 @@ def fake_agent(monkeypatch):
             captured["thread_id"] = config["configurable"]["thread_id"]
             return {"messages": [AIMessage("fake reply")]}
 
-    def fake_build(session, user, now=None):
+    def fake_build(session_factory, user, now=None):
         captured["username"] = user.username
         return FakeAgent()
 

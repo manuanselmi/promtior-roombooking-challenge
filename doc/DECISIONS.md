@@ -230,3 +230,47 @@ la aplicación tenga la carrera.
 
 **Alternativas descartadas:** `BEGIN IMMEDIATE` (acopla el service al dialecto SQLite);
 dejarlo documentado sin cerrar (defendible, pero cerrarlo costó tres líneas y un test).
+
+---
+
+## D14 — Una sesión de DB por invocación de tool
+
+**Problema:** el `ToolNode` de LangChain ejecuta las tool calls de un mismo turno del
+modelo **en threads paralelos** (`executor.map`), y `gpt-4o-mini` emite tool calls
+paralelas por defecto ("reservá la sala B y la C" → dos calls simultáneas). Las tools
+compartían la `Session` de SQLAlchemy del request — que no es thread-safe — vía closure.
+Reproducido: 24 de 40 iteraciones fallaban, mitad con `sqlite3.InterfaceError` (→ 502),
+mitad con resultados silenciosamente falsos ("Room 'C' does not exist") que el agente
+relataba como ciertos.
+
+**Decisión:** `build_tools` recibe un session factory (`Callable[[], Session]`) en lugar
+de una sesión; cada invocación de tool abre y cierra su propia sesión. La identidad se
+captura como valores planos (`user.id`, `user.username`) porque la instancia ORM
+pertenece a la sesión del request, que no debe tocarse desde los threads de las tools.
+Verificado con un test que ejecuta creates y lecturas concurrentes en threads (el mismo
+patrón de ejecución que `ToolNode`).
+
+**Alternativas descartadas:** `parallel_tool_calls=False` en el modelo (no ataca la causa
+raíz, pierde paralelismo legítimo y depende de un flag del proveedor); un lock por request
+serializando las tools (parche que mantiene la sesión compartida como fragilidad latente).
+
+---
+
+## D15 — Datetimes con timezone: rechazados, no convertidos
+
+**Problema:** los docstrings de las tools piden ISO 8601; si el modelo agrega `Z` o un
+offset (o el usuario pega un timestamp con offset y el modelo lo copia), pydantic parsea
+un datetime *aware*. Compararlo con el reloj naive del sistema tiraba `TypeError` — que
+no es `BookingError`, escapaba del agente y terminaba en 502 — y en las queries SQL el
+offset se ignoraba silenciosamente (SQLite compara strings).
+
+**Decisión:** todo el dominio es hora local naive (America/Montevideo, D10); un datetime
+aware se rechaza en `service.py` (la fuente de verdad) como `BookingError` con mensaje
+accionable, que el agente relata y corrige reenviando la hora local. Los docstrings de
+las tools y el system prompt piden explícitamente "sin offset ni 'Z'" para minimizar la
+frecuencia del caso.
+
+**Alternativas descartadas:** convertir a Montevideo (`astimezone`): cuando el modelo
+agrega `Z` por hábito — el caso típico — "10:00Z" se convertiría en 07:00 y la reserva
+quedaría a la hora equivocada sin que nadie lo note; strip directo de `tzinfo` (acierta
+en el caso típico pero miente cuando el offset era intencional, y lo hace en silencio).

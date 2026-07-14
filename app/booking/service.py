@@ -8,7 +8,11 @@ The LLM can only call these functions; if a call violates a rule it gets a
 A booking is modelled as one contiguous [start, end) range aligned to 30-minute
 boundaries, which makes non-contiguous slot combinations unrepresentable.
 
-All datetimes are naive local time (America/Montevideo).
+All datetimes are naive local time (America/Montevideo). Timezone-aware inputs
+are rejected as a BookingError: comparing them against the naive clock and the
+naive datetimes stored in SQLite would either raise TypeError or silently
+ignore the offset, and an offset sent by the LLM usually does not reflect the
+user's intent anyway.
 """
 
 import threading
@@ -41,7 +45,18 @@ def _get_room(session: Session, room_id: str) -> Room:
     return room
 
 
+def _reject_timezone_aware(start: datetime, end: datetime) -> None:
+    for dt in (start, end):
+        if dt.tzinfo is not None:
+            raise BookingError(
+                f"Times must be local (America/Montevideo) without a UTC offset or 'Z', "
+                f"got '{dt.isoformat()}'. Resend the local wall-clock time, "
+                f"e.g. '2030-06-15T10:00'."
+            )
+
+
 def _validate_slot_alignment(start: datetime, end: datetime) -> None:
+    _reject_timezone_aware(start, end)
     for name, dt in (("start", start), ("end", end)):
         if dt.minute % SLOT_MINUTES or dt.second or dt.microsecond:
             raise BookingError(
@@ -55,6 +70,7 @@ def _validate_slot_alignment(start: datetime, end: datetime) -> None:
 
 
 def _validate_query_range(start: datetime, end: datetime) -> None:
+    _reject_timezone_aware(start, end)
     if end <= start:
         raise BookingError("The end time must be after the start time.")
 
