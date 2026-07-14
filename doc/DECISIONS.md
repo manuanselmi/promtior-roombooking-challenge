@@ -21,21 +21,26 @@ in-house. Más control y transparencia, pero no demuestra LangChain, que es lo q
 
 ---
 
-## D2 — LLM: OpenAI, default `gpt-4o-mini`, configurable por env var
+## D2 — LLM: OpenAI, default `gpt-4o`, configurable por env var
 
-**Decisión:** usar la API de OpenAI con `gpt-4o-mini` como modelo default, seleccionable
-vía variable de entorno (`OPENAI_MODEL` o similar).
+**Decisión:** usar la API de OpenAI con `gpt-4o` como modelo default, seleccionable vía
+variable de entorno (`OPENAI_MODEL`).
 
 **Por qué:**
 - El PDF recomienda explícitamente OpenAI API si se tiene suscripción — el candidato tiene
   crédito disponible.
-- El deploy es público y consume crédito propio: `gpt-4o-mini` es barato y suficiente para
-  tool-calling estructurado en un dominio acotado como este.
-- Configurable por env var: permite subir a un modelo más capaz para la demo/evaluación
+- El default arrancó en `gpt-4o-mini` (barato, suficiente para tool-calling estructurado),
+  pero se subió a `gpt-4o` tras verificar que 4o-mini no respeta de forma confiable la
+  instrucción de "pedir los datos faltantes, nunca asumir la duración ni inventar el
+  título": reservaba slots de 30 minutos en silencio aunque el prompt, el docstring de la
+  tool y un ejemplo few-shot se lo prohibían. `gpt-4o` sí obedece. Los requests son chicos
+  (system prompt corto + mensajes breves), así que el costo por conversación es marginal.
+- Configurable por env var: permite bajar a un modelo más barato o subir a uno más capaz
   sin tocar código.
 
-**Alternativas descartadas:** Groq/Ollama/OpenRouter (opciones que da el PDF para quienes
-no tienen suscripción — no aplica); modelos más caros como default (costo innecesario).
+**Alternativas descartadas:** seguir en `gpt-4o-mini` (más barato, pero incumple el
+requisito de preguntar en vez de asumir); Groq/Ollama/OpenRouter (opciones que da el PDF
+para quienes no tienen suscripción — no aplica).
 
 ---
 
@@ -197,9 +202,9 @@ ninguna regla de negocio ni dato sensible depende de él.
    LangGraph usa como clave de la conversación → login nuevo = conversación nueva, sin
    estado extra en el servidor (el JWT ya viaja en cada request). Coherente con la
    memoria volátil de D11.
-2. **Respuesta bloqueante, sin streaming.** Con `gpt-4o-mini` y respuestas cortas, la
-   latencia percibida no justifica SSE/WebSockets en el MVP. La UI muestra un indicador
-   de "escribiendo". Streaming queda listado como mejora futura.
+2. **Respuesta bloqueante, sin streaming.** Con respuestas cortas la latencia percibida
+   no justifica SSE/WebSockets en el MVP. La UI muestra un indicador de "escribiendo".
+   Streaming queda listado como mejora futura.
 3. **Token JWT solo en memoria del navegador** (variable JS, no `localStorage`): un
    refresh implica re-login. Menos superficie ante XSS y consistente con que la memoria
    de conversación del servidor también es volátil.
@@ -236,7 +241,7 @@ dejarlo documentado sin cerrar (defendible, pero cerrarlo costó tres líneas y 
 ## D14 — Una sesión de DB por invocación de tool
 
 **Problema:** el `ToolNode` de LangChain ejecuta las tool calls de un mismo turno del
-modelo **en threads paralelos** (`executor.map`), y `gpt-4o-mini` emite tool calls
+modelo **en threads paralelos** (`executor.map`), y el modelo de OpenAI emite tool calls
 paralelas por defecto ("reservá la sala B y la C" → dos calls simultáneas). Las tools
 compartían la `Session` de SQLAlchemy del request — que no es thread-safe — vía closure.
 Reproducido: 24 de 40 iteraciones fallaban, mitad con `sqlite3.InterfaceError` (→ 502),
@@ -274,3 +279,32 @@ frecuencia del caso.
 agrega `Z` por hábito — el caso típico — "10:00Z" se convertiría en 07:00 y la reserva
 quedaría a la hora equivocada sin que nadie lo note; strip directo de `tzinfo` (acierta
 en el caso típico pero miente cuando el offset era intencional, y lo hace en silencio).
+
+---
+
+## D16 — Backoffice: link público sin login que ve y cancela cualquier reserva
+
+**Problema:** hacía falta una forma de verificar de un vistazo que las reservas se guardan
+bien (qué sala, quién, cuándo) y de corregirlas (cancelar) sin pasar por el chat. El chat
+está atado a un usuario y sus reglas (`cancel_booking` solo cancela lo propio), así que no
+sirve como vista de operador.
+
+**Decisión:** una página estática nueva (`/backoffice`) con vista semanal por sala, servida
+por el mismo FastAPI y sin autenticación (se accede por link, decisión de producto para el
+alcance del challenge). Se apoya en tres endpoints públicos (`/backoffice/api/rooms`,
+`/backoffice/api/bookings`, `DELETE /backoffice/api/bookings/{id}`) y en dos helpers de
+servicio nuevos: `list_bookings_in_range` (reservas de todos los usuarios en un rango) y
+`admin_cancel_booking` (cancela cualquier reserva, sin el chequeo de propiedad). Ambos viven
+en `service.py`, junto a las reglas que saltean a propósito, para que la historia de "quién
+puede qué" quede en un solo lugar. El frontend es vanilla JS/CSS (sin build ni librerías de
+calendario), como el resto de la UI: pide la semana entera una vez y filtra por sala del lado
+del cliente, así cambiar de sala es instantáneo.
+
+**Riesgo asumido:** al estar deployado en una URL pública, cualquiera que la descubra puede
+cancelar reservas. Aceptable para una demo evaluable; en un entorno real se protegería con
+login o una red interna (ver "Mejoras futuras").
+
+**Alternativas descartadas:** meter la vista dentro del chat autenticado (mezcla el rol de
+usuario final con el de operador, y arrastra las reglas de propiedad que acá no queremos);
+una librería de calendario (FullCalendar y afines) traería un build y dependencias externas
+que rompen la simplicidad de "un archivo estático, sin CDN" del resto del proyecto.
