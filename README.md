@@ -19,9 +19,9 @@ OpenAI (`gpt-4o` por defecto).
 
 - **[Project Overview](doc/PROJECT_OVERVIEW.md):** cómo encaré y resolví el
   challenge, la arquitectura, los desafíos técnicos y cómo los superé.
-- **[Diagrama de componentes](doc/architecture.png):** los componentes y sus
+- **[Diagrama de componentes](doc/component-diagram.png):** los componentes y sus
   interacciones desde que llega el mensaje hasta que se devuelve la respuesta
-  ([versión interactiva](doc/architecture-diagram.html)).
+  ([versión interactiva](doc/component-diagram.html)).
 - **[Notebook técnico](doc/notebook.ipynb):** las tecnologías con ejemplos de
   código ejecutables aplicados a esta solución.
 - **[Log de decisiones](doc/DECISIONS.md):** cada decisión de diseño (D1 a D16)
