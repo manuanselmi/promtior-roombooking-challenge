@@ -20,6 +20,7 @@ dev = [
     "pytest>=8.3",
     "httpx>=0.27",
     "ruff>=0.8",
+    "ipykernel>=7.3.0",
 ]
 
 [tool.ruff]
