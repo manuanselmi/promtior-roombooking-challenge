@@ -42,7 +42,7 @@ La solución está organizada en capas, cada una con una responsabilidad:
 | Autenticación | `app/auth.py` | Login con JWT y hashing con bcrypt |
 | Capa HTTP | `app/main.py` | Endpoints de login, chat, backoffice y la página estática |
 
-![Diagrama de componentes](architecture.png)
+![Diagrama de componentes](component-diagram.png)
 
 Una reserva se modela como un único rango contiguo `[start, end)` alineado a slots de 30
 minutos. Combinar slots no contiguos es imposible por diseño, así que no tengo que validar
