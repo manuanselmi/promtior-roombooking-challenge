@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.booking.db import ROOM_CAPACITIES
 from app.booking.models import User
+from app.clock import now_local
 from app.config import settings
 
 from .tools import build_tools
@@ -76,7 +77,7 @@ Worked examples of asking instead of assuming (follow these exactly):
 
 
 def build_agent(session_factory: Callable[[], Session], user: User, now: datetime | None = None):
-    now = now or datetime.now()
+    now = now or now_local()
     rooms = ", ".join(f"{room} (up to {cap} people)" for room, cap in ROOM_CAPACITIES.items())
     model = ChatOpenAI(model=settings.openai_model, api_key=settings.openai_api_key, temperature=0)
     return create_agent(

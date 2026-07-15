@@ -131,6 +131,16 @@ por el historial hacia la API de OpenAI y los logs.
 **El LLM no tiene reloj.** Sin la fecha actual, "mañana a las 10" es irresoluble y el bot
 reservaría en el pasado. La inyecto en el system prompt en cada request.
 
+**El reloj del servidor no es el de la oficina.** El dominio trabaja en hora local de
+Montevideo (naive), pero `datetime.now()` devuelve la hora del proceso, y el contenedor de
+producción corre en UTC. Con eso, el "ahora" que inyecto al prompt y el chequeo de "no
+reservar en el pasado" quedaban corridos tres horas, y en la franja de la noche, cuando la
+fecha UTC ya es la del día siguiente, "hoy" y "mañana" se resolvían al día equivocado. Lo
+cerré fijando la zona en un solo lugar: un `now_local()` en `app/clock.py` con
+`ZoneInfo("America/Montevideo")` que usan el service y el agente, en vez de depender de la
+zona del proceso. Sumé `tzdata` a las dependencias porque la imagen slim no la trae y
+`zoneinfo` no puede resolver la zona sin ella.
+
 **La doble reserva.** FastAPI atiende los endpoints sync desde un threadpool, así que dos
 requests simultáneos podían intercalarse entre el chequeo de solapamiento y el INSERT, y
 crear dos reservas solapadas sin que ninguno viera el conflicto. Lo cerré con un lock de
@@ -192,10 +202,10 @@ solapamiento) y recién ahí Fargate con réplicas sería lo correcto.
 
 ## Testing
 
-82 tests que cubren cada capa determinista sin gastar una llamada al LLM: las reglas de
-negocio del service (con base en memoria y un `now` inyectado), las tools directo (los
-strings de rechazo y el binding de identidad), los contratos HTTP (login, 401, sesión por
-token) y los endpoints del backoffice. El LLM es no determinista, así que no lo testeo con
+86 tests que cubren cada capa determinista sin gastar una llamada al LLM: las reglas de
+negocio del service (con base en memoria y un `now` inyectado), el reloj local de la oficina
+(`app/clock.py`), las tools directo (los strings de rechazo y el binding de identidad), los
+contratos HTTP (login, 401, sesión por token) y los endpoints del backoffice. El LLM es no determinista, así que no lo testeo con
 asserts; lo probé a mano y con la demo del notebook.
 
 ## Cómo correr el proyecto

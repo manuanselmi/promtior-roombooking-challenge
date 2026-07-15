@@ -21,6 +21,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.clock import now_local
+
 from .models import Booking, Room, User
 
 SLOT_MINUTES = 30
@@ -108,7 +110,7 @@ def create_booking(
             f"Room {room.id} holds at most {room.capacity} people, got {attendees}. "
             f"Try a bigger room."
         )
-    if start < (now or datetime.now()):
+    if start < (now or now_local()):
         raise BookingError("Bookings cannot start in the past.")
 
     with _BOOKING_WRITE_LOCK:
@@ -162,7 +164,7 @@ def list_user_bookings(
 ) -> list[Booking]:
     stmt = select(Booking).where(Booking.user_id == user.id).order_by(Booking.start)
     if not include_past:
-        stmt = stmt.where(Booking.end >= (now or datetime.now()))
+        stmt = stmt.where(Booking.end >= (now or now_local()))
     return list(session.scalars(stmt))
 
 
